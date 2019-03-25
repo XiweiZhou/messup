@@ -1,0 +1,55 @@
+
+import numpy as np
+from keras.models import Sequential
+from keras.layers import Dense, Dropout
+from sklearn.preprocessing import StandardScaler
+
+
+# model specification
+input_dim = len(target_cols)
+def mlp_model(input_size, dense_sequence, dropout_value, activiation): 
+    model = Sequential()
+    counter = 1
+    for s in dense_sequence:
+        if counter == 1:
+            model.add(Dense(s, input_dim=input_size, activation=activiation))
+        else:
+            model.add(Dense(s, activation=activiation))
+        model.add(Dropout(dropout_value))
+    # last layer
+    model.add(Dense(1, activation='sigmoid'))
+    return model
+        
+
+model = mlp_model(len(target_cols), [128, 64, 32], 0.5, 'relu')
+
+
+
+# Kfold 
+def kfold_validation(folds, X, Y):
+    l = len(X) // folds
+    scores = []
+    for i in range(folds):
+        test_x = X[i*l:(i+1)*l]
+        test_y = Y[i*l:(i+1)*l]
+
+        train_x = np.concatenate([X[:i*l], X[(i+1)*l:]])
+        train_y = np.concatenate([Y[:i*l], Y[(i+1)*l:]])   
+        
+        model = mlp_model(len(target_cols), [128, 64, 32], 0.5, 'relu')
+        model.compile(loss='binary_crossentropy',
+                  optimizer='rmsprop',
+                  metrics=['accuracy'])
+        model.fit(train_x, train_y, epochs=20, batch_size=128)
+        score = model.evaluate(test_x, test_y, batch_size=128)
+        scores.append(score)
+    return scores
+
+
+scaler = StandardScaler()  
+scaler.fit(train)  
+X_train = scaler.transform(train)
+Y_train = y
+
+scores = kfold_validation(5, X_train, Y_train)
+print(scores, np.mean(scores), np.std(scores))
