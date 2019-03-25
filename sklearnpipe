@@ -1,0 +1,49 @@
+from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_val_score
+from sklearn.pipeline import Pipeline
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+from sklearn.datasets import make_moons, make_circles, make_classification
+
+from sklearn.neural_network import MLPClassifier
+from sklearn.svm import SVC
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.gaussian_process.kernels import RBF
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
+from sklearn.naive_bayes import GaussianNB
+
+num_folds = 10
+seed = 42
+scoring = 'accuracy'
+
+
+pipelines = []
+
+# pipelines.append(('ScaledLR', Pipeline([ ('LR', LinearRegression())])))
+pipelines.append(('SVC_linear', Pipeline([ ('SVC_liner', SVC(kernel="linear", C=0.025))])))
+pipelines.append(('SVC', Pipeline([ ('SVC', SVC(gamma=2, C=1))])))
+# pipelines.append(('Gaussian', Pipeline([ ('Gaussian', GaussianProcessClassifier(1.0 * RBF(1.0)))])))
+pipelines.append(('DecisionTree', Pipeline([ ('DecisionTree', DecisionTreeClassifier(max_depth=5))])))
+pipelines.append(('RandomForest', Pipeline([ ('RandomForest', RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1))])))
+pipelines.append(('MLP', Pipeline([ ('MLP', MLPClassifier(alpha=1))])))
+pipelines.append(('Ada', Pipeline([ ('Ada', AdaBoostClassifier())])))
+
+
+results = []
+names = []
+
+scaler = StandardScaler()  
+scaler.fit(train)  
+X_train = scaler.transform(train)
+Y_train = y
+
+for name, model in pipelines:
+    kfold = KFold(n_splits=num_folds, random_state=seed)
+    cv_results = cross_val_score(model, X_train, Y_train, cv=kfold, scoring=scoring)
+    results.append(cv_results)
+    names.append(name)
+    msg = "%s: %f (%f)" % (name, cv_results.mean(), cv_results.std())
+    print(msg)
