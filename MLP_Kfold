@@ -53,3 +53,40 @@ Y_train = y
 
 scores = kfold_validation(5, X_train, Y_train)
 print(scores, np.mean(scores), np.std(scores))
+
+
+
+### 
+from sklearn.model_selection import GridSearchCV
+from keras.wrappers.scikit_learn import KerasClassifier
+
+def mlp_model(input_size, dense_sequence=[256, 128], 
+              dropout_rate=0.5, 
+              activate_func='relu',
+              optimizer='rmsprop'): 
+    model = Sequential()
+    counter = 1
+    for s in dense_sequence:
+        if counter == 1:
+            model.add(Dense(s, input_dim=input_size, activation=activate_func))
+            counter += 1
+        else:
+            model.add(Dense(s, activation=activate_func))
+        model.add(Dropout(dropout_rate))
+    # last layer
+    model.add(Dense(1, activation='sigmoid'))
+    model.compile(loss='binary_crossentropy',
+                  optimizer=optimizer,
+                  metrics=['accuracy'])
+    return model
+
+
+x_train, x_test, y_train, y_test = train_test_split(
+    X_train, Y_train, test_size=0.33, random_state=0)
+
+model = mlp_model(len(target_cols), dense_sequence=[128, 64, 32], 
+              dropout_rate=0.5, 
+              activate_func='relu',
+              optimizer='rmsprop')
+    
+model.fit(X_train, y_train, epochs=50, batch_size=64)
