@@ -1,0 +1,172 @@
+# for categoricial model embedding purpose
+import pandas as pd
+from keras.layers import Reshape, Embedding, Input, Dense, Dropout
+from keras.layers import Concatenate
+from keras.models import Model 
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from pandas.core.indexing import IndexingError
+from sklearn.metrics import classification_report
+
+class ml_model(object):
+    pass
+
+class cat_model(ml_model):
+    def __init__(self, df, cat_list:list):
+        self.category_dict = {}
+        self.embedding_sz = []
+        self.inputs = []
+        self.outputs = []
+        self.categorify(df, cat_list)
+        self.build_model()
+        # return self.model, self.input_size, self.output_size
+        
+    def categorify(self, df, cat_list:list):
+        for c in cat_list:
+            df.loc[:, c] = df.loc[:, c].astype('category').cat.as_ordered()
+            self.category_dict[c] = df[c].astype('category').cat.categories 
+            self.embedding_sz.append((c, len(df[c].cat.categories) + 1))
+
+    def build_model(self):        
+        for embed_sz in self.embedding_sz:
+            name = embed_sz[0]
+            cadinality = embed_sz[1]
+            em_size = min(300, cadinality // 2  + 1)
+
+            node_in = Input(shape=(1, ), name='%s_input'%name)
+            embed = Embedding(cadinality, em_size, name='%s_embedding'%name)(node_in)
+            embed = Reshape(target_shape=(em_size, ))(embed)
+
+            self.inputs.append(node_in)
+            self.outputs.append(embed)
+
+class cont_model(ml_model):
+    def __init__(self, df, cont_list:list):
+        self.inputs = []
+        self.outputs = []
+        self.build_model(cont_list)
+
+    def build_model(self, cont_list):
+        num_input = Input(shape=(len(cont_list), ))
+        num_output = Dense(len(cont_cols))(num_input)
+        self.inputs.append(num_input)
+        self.outputs.append(num_output)
+        
+
+def mlp_model(ensemble_inputs,
+              ensemble_outputs,               
+              dense_sequence=[320, 160], 
+              dropout_rate=[0.5], 
+              activate_func='relu', 
+              optimizer='adam',
+              loss_func = 'binary_crossentropy',
+              classification_type = 'binary',
+              metrics = ['accuracy'], 
+              input_size = 2
+              ):
+    # mapping dropout to dense sequence
+    if len(dropout_rate) < len(dense_sequence):
+        assert len(dropout_rate) == 1
+        dropout_rate = dropout_rate * len(dense_sequence)
+    
+    embedding_inputs = Concatenate()(ensemble_outputs)
+    # core NN model
+    for s, d in zip(dense_sequence, dropout_rate):
+        x = Dense(s, activation=activate_func)(embedding_inputs)
+        x = Dropout(d)(x)
+
+    # last layer
+    if classification_type == 'binary':
+        x = Dense(1, activation='sigmoid')(x) # for binary 
+    else: 
+        x = Dense(1, activation='softmax')(x) # for binary 
+
+    model = Model(inputs = ensemble_inputs, outputs = x)
+    
+    model.compile(loss=loss_func,
+                  optimizer=optimizer,
+                  metrics=metrics)
+    return model
+
+def preproc(train, cat_cols, categories, cont_cols, scaler, testing=False):
+    ready_train = []
+    for c in cat_cols:        
+        train.loc[:, c] = pd.Categorical(train.loc[:,c], categories = categories[c], ordered = True)
+        ready_train.append(train.loc[:, c].cat.codes)
+
+    if not testing:
+        # standardscale
+        scaler.fit(train.loc[:, cont_cols])
+    train.loc[:, cont_cols] = scaler.transform(train.loc[:, cont_cols])
+    ready_train.append(train.loc[:, cont_cols])
+    return ready_train, scaler
+
+
+# Data loading 
+data_set = './adult.csv'
+df = pd.read_csv(data_set)
+cols_x = [c for c in df.columns if c != 'salary']
+cols_y = 'salary'
+X, y = df[cols_x], df[cols_y]
+
+# fill the na
+X.occupation.fillna('unknown', inplace=True)
+X['education-num'].fillna(X['education-num'].mean(), inplace=True)
+
+# split training testing
+x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
+
+# seperate the category and cont
+cat_cols = ['workclass', 'education', 
+            'marital-status', 'occupation', 'relationship', 'race', 'sex',
+            'native-country']
+cont_cols = ['age', 'fnlwgt',  'education-num',
+             'capital-gain', 'capital-loss', 'hours-per-week']
+
+# build model
+model_inputs = []
+model_outputs = []
+
+cat_ml = cat_model(X, cat_cols)
+model_inputs += cat_ml.inputs
+model_outputs += cat_ml.outputs
+
+cont_ml = cont_model(X, cont_cols)
+model_inputs += cont_ml.inputs
+model_outputs += cont_ml.outputs
+
+print(model_outputs)
+# get model
+model = mlp_model(
+              model_inputs, 
+              model_outputs,
+              dense_sequence=[320, 160], 
+              dropout_rate=[0.5], 
+              activate_func='relu', 
+              optimizer='adam',
+              loss_func = 'binary_crossentropy',
+              classification_type = 'binary',
+              metrics = ['accuracy']
+              )
+
+# data preparation
+categories = cat_ml.category_dict
+scaler = StandardScaler()
+print(categories)
+# import pdb
+# pdb.set_trace()
+
+X_train, scaler = preproc(x_train, cat_cols, categories, cont_cols, scaler)
+X_test, scaler = preproc(x_test, cat_cols, categories, cont_cols, scaler, testing=True)
+Y_train = y_train.astype('category').cat.as_ordered()
+Y_test = y_test.astype('category').cat.as_ordered()
+
+# print(X_train.head(5))
+# fit
+model.fit(X_train, Y_train.cat.codes, epochs=10, batch_size=64)
+# testing
+print(dir(model))
+y_true, y_pred = Y_test.cat.codes, (model.predict(X_test) > 0.4).astype('int32')
+print(y_true[:10], y_pred[:10])
+print(classification_report(y_true, y_pred))
+
